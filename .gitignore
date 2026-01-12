@@ -1,0 +1,13 @@
+# Basics
+.DS_Store
+
+# Ignore downloaded data and built databases
+data/*
+*.dat
+*.db
+
+# Ignore compiled python
+*.pyc
+
+# Ignore Jupyter notebooks (used for small tests)
+*.ipynb
