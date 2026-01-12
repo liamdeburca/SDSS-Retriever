@@ -201,10 +201,12 @@ class SQLQuery:
         """
         if isinstance(column, str):
             assert column in self.column_names
+            cols = (_pad(column))
         else:
             assert all(c in self.column_names for c in column)
+            cols = tuple(map(_pad, column))
 
-        self.where_logic.append(logic)
+        self.where_logic.append(logic.format(*cols))
 
         return self
     
@@ -231,6 +233,8 @@ class SQLQuery:
             else:
                 desc: list[bool] = list(descending)
                 assert len(cols) == len(desc)
+
+        cols = list(map(_pad, cols))
 
         self.order_by_logic.extend(
             (c, 'DESC' if d else 'ASC') \

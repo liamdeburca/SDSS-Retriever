@@ -11,3 +11,4 @@ data/*
 
 # Ignore Jupyter notebooks (used for small tests)
 *.ipynb
+random_test.py
