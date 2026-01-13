@@ -1,7 +1,7 @@
 """
 Class for retrieving SDSS spectra using AstroQuery's 'get_spectra'.
 """
-from typing import Optional, Union, Iterable, Iterator
+from typing import Optional, Union, Iterator
 from astropy.io.fits import HDUList
 from numpy import ndarray
 from multiprocessing.pool import Pool
@@ -12,16 +12,41 @@ class SDSSRetriever:
 
     def __call__(
         self,
-        plate: Union[int, Iterable[int]],
-        fiber: Union[int, Iterable[int]],
-        mjd: Union[int, Iterable[int]],
-        *,
+        *args,
         timeout: float = 60.0,
         data_release: int = 17,
         show_progress: bool = True,
     ) -> Iterator:
+        from pandas import DataFrame
         from itertools import repeat
         from tqdm import tqdm
+
+        if len(args) == 1:
+            if isinstance(data := args[0], dict):
+                plate: Union[int, list[int]] = data['plate']
+                fiber: Union[int, list[int]] = data['fiber']
+                mjd:   Union[int, list[int]] = data['mjd']
+            elif isinstance(data, DataFrame):
+                plate: list[int] = data['plate'].to_list()
+                fiber: list[int] = data['fiber'].to_list()
+                mjd:   list[int] = data['mjd'].to_list()
+            else:
+                raise ValueError
+
+            return self(
+                plate, fiber, mjd, 
+                timeout = timeout, 
+                data_release = data_release, 
+                show_progress = show_progress,
+            )
+
+        elif len(args) == 3:
+            plate: Union[int, list[int]] = args[0]
+            fiber: Union[int, list[int]] = args[1]
+            mjd:   Union[int, list[int]] = args[2]
+
+        else:
+            raise ValueError
 
         if isinstance(plate, int): plate = (plate,)
         if isinstance(fiber, int): fiber = (fiber,)

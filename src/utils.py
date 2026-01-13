@@ -8,21 +8,39 @@ from sqlite3 import Connection
 from pandas import DataFrame
 
 _this_file: Path = Path(__file__)
-PATH_TO_DB: Path = _this_file.parents[1] / 'data/db.db'
-PATH_TO_CACHE: Path = _this_file.parents[1] / 'cache'
+
+PATH_TO_DB:      Path = _this_file.parents[1] / "data/db.db"
+PATH_TO_SAMPLES: Path = _this_file.parents[1] / "data/samples.db"
+
+def _connect_to_any_db(db_name: str) -> tuple[Connection, Path]:
+    """
+    Connects to any database in the 'data' directory.
+    """
+    from sqlite3 import connect
+    from pathlib import Path
+
+    db_name = db_name.removesuffix('.db')
+    path_to_db: Path = _this_file.parents[1] / f"data/{db_name}.db"
+
+    return connect(path_to_db), path_to_db
 
 def connect_to_db() -> Connection:
     """
     Connects to the database.
     """
-    from sqlite3 import connect
-    return connect(PATH_TO_DB)
+    return _connect_to_any_db('db')[0]
 
-def get_table_names() -> list[str]:
+def connect_to_samples() -> Connection:
+    """
+    Connects to the database of samples.
+    """
+    return _connect_to_any_db('samples')[0]
+
+def get_table_names(db_name: str) -> list[str]:
     """
     Lists the names of all available tables in the database.
     """
-    connection = connect_to_db()
+    connection = _connect_to_any_db(db_name)[0]
     cursor = connection.cursor()
     return [
         table_info[1] \
@@ -30,45 +48,47 @@ def get_table_names() -> list[str]:
         if not table_info[1].startswith('sqlite_')
     ]
 
-def get_table_fields(table_name: str) -> list[str]:
+def get_table_fields(db_name: str, table_name: str) -> list[str]:
     """
     Lists the available fields for the given table.
     """
-    assert table_name in get_table_names()
+    assert table_name in get_table_names(db_name)
 
-    connection = connect_to_db()
+    connection = _connect_to_any_db(db_name)[0]
     cursor = connection.cursor()
     return [
         table_info[1] \
-        for table_info in cursor.execute(f"PRAGMA table_info(name)").fetchall() \
+        for table_info in cursor.execute(f"PRAGMA table_info(name)").fetchall()
     ]
 
-def remove_table(table_name: str) -> None:
+def remove_table(db_name: str, table_name: str) -> None:
     """
     Removes the designated table from the database.
     """
-    assert table_name in get_table_names()
+    assert table_name in get_table_names(db_name)
 
-    connection = connect_to_db()
+    connection = _connect_to_any_db(db_name)[0]
     cursor = connection.cursor()
     cursor.execute(f"DROP TABLE {table_name}")
 
 def add_table_to_db(
+    db_name: str,
     table_name: str,
     table_fields: Iterable[str],
 ) -> Connection:
     """
     Creates a table with the given name and fields.
     """
-    assert table_name not in get_table_names()
+    assert table_name not in get_table_names(db_name)
 
     sql: str = f"CREATE TABLE {table_name}(" + ", ".join(table_fields) + ")" 
     
-    connection = connect_to_db()
+    connection = _connect_to_any_db(db_name)[0]
     cursor = connection.cursor()
     cursor.execute(sql)
 
 def write_to_db(
+    db_name: str,
     table_name: str,
     df: DataFrame,
     replace: bool = True,
@@ -79,8 +99,8 @@ def write_to_db(
     table_fields = list(df.columns)
     if_exists: str = 'append'
 
-    if table_name in get_table_names():
-        existing_fields: list[str] = get_table_fields(table_name)
+    if table_name in get_table_names(db_name):
+        existing_fields: list[str] = get_table_fields(db_name, table_name)
         
         if existing_fields:
             assert all(t in existing_fields for t in table_fields)
@@ -91,39 +111,7 @@ def write_to_db(
 
     df.to_sql(
         table_name, 
-        connect_to_db(),
+        _connect_to_any_db(db_name)[0],
         index = False,
         if_exists = if_exists,
     )
-
-# def set_cache_location(
-#     subdir: Optional[str] = None,
-# ) -> Path:
-#     """
-#     Sets the cache location for AstroQuery queries. 
-#     """
-#     from pathlib import Path
-#     from astroquery.sdss import SDSS
-
-#     path: Path = PATH_TO_CACHE
-#     if subdir is not None: path /= subdir
-
-#     # Ensure cache directory exists
-#     path.mkdir(parents=True, exist_ok=True)
-#     # Update cache location
-#     SDSS._cache_location = path
-
-#     return path
-
-# def clear_cache(
-#     subdir: Optional[str] = None,
-# ) -> None:
-#     """
-#     Clears the AstroQuery cache.
-#     """
-#     from astroquery.sdss import SDSS
-
-#     # Ensure right cache location is set
-#     _ = set_cache_location(subdir=subdir)
-#     # Clear the cache
-#     SDSS.clear_cache()

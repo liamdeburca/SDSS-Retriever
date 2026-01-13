@@ -3,7 +3,8 @@ SQLQuery class for constructing SQL queries easily.
 """
 import sys
 from pathlib import Path
-from typing import Optional, Union, Iterable
+from typing import Optional, Union, Iterable, Literal
+from pandas import DataFrame
 
 _this_file: Path = Path(__file__)
 if (pkg_path := _this_file.parents[1]) not in sys.path:
@@ -76,12 +77,20 @@ class SQLQuery:
 
         return query_elems, query
     
-    def _query(self, sql: str) -> dict:
+    def _query(
+        self, 
+        sql: str,
+        out_type: Literal['dict', 'dataframe'] = 'dataframe',
+    ) -> Union[dict, DataFrame]:
         """
         Uses a custom sql query to retrieve the data.
         """
         from pandas import read_sql_query
-        return read_sql_query(sql, self.connection).to_dict(orient='list')
+
+        if out_type == 'dict':
+            self._query(sql, out_type='dataframe').to_dict(orient='list')
+
+        return read_sql_query(sql, self.connection)
     
     @property
     def column_info(self):
@@ -145,11 +154,14 @@ class SQLQuery:
         """
         return SQLQuery().connectToDatabase()
     
-    def STOP(self) -> dict:
+    def STOP(
+        self, 
+        out_type: Literal['dict', 'dataframe'] = 'dataframe',
+    ) -> Union[dict, DataFrame]:
         """
         Builds the SQL query and retrieves the data.
         """
-        return self._query(self._build_query()[1])
+        return self._query(self._build_query(out_type=out_type)[1])
     
     def FROM(
         self,

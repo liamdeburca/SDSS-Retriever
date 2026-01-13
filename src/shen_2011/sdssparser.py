@@ -280,16 +280,19 @@ class SDSSParser(dict):
 
         return self._cache[key]
     
-    def keys(self) -> list[str]:
+    @staticmethod
+    def keys() -> list[str]:
         """
         Returns a list of all keys.
         """
+        cls = SDSSParser
+
         # Basic fields
-        keys: list[str] = list(self._field_specs.keys())
+        keys: list[str] = list(cls._field_specs.keys())
         # Flag fields
-        keys.extend(map(SDSSParser._format_flag_name, self._flag_bits.values()))
+        keys.extend(map(SDSSParser._format_flag_name, cls._flag_bits.values()))
         # Special flag (SpF) fields
-        keys.extend(map(SDSSParser._format_spf_name, self._spf_bits.values()))
+        keys.extend(map(SDSSParser._format_spf_name, cls._spf_bits.values()))
 
         return keys
 
@@ -404,3 +407,17 @@ class SDSSParser(dict):
             lambda key: (key.lower(), self[key]), 
             keys,
         )))
+    
+    @staticmethod
+    def correctSQLStatement(sql: str) -> str:
+
+        sql = sql.lower()
+        for key in map(str.lower, SDSSParser.keys()):
+            if key.isalpha(): continue
+            
+            padded_key = f"`{key}`"
+
+            sql = sql.replace(padded_key, key) \
+                     .replace(key, padded_key)
+            
+        return sql
