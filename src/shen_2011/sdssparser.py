@@ -3,7 +3,7 @@ Class for parsing ASCII file from Shen et al. (2011).
 """
 from typing import Union
 from pathlib import Path
-from collections import defaultdict, Counter
+from collections import defaultdict
 from pandas import DataFrame
 
 class SDSSParser(dict):
@@ -189,6 +189,46 @@ class SDSSParser(dict):
         'oWISE': (1241, 1247, float),
     }
 
+    _flag_bits: dict[int, str] = {
+        0:  'QSO_HIZ',
+        1:  'QSO_CAP',
+        2:  'QSO_SKIRT',
+        3:  'QSO_FIRST_CAP',
+        4:  'QSO_FIRST_SKIRT',
+        5:  'GALAXY_RED',
+        6:  'GALAXY',
+        7:  'GALAXY_BIG',
+        8:  'GALAXY_BRIGHT_CORE',
+        9:  'ROSAT_A',
+        10: 'ROSAT_B',
+        11: 'ROSAT_C',
+        12: 'ROSAT_D',
+        13: 'STAR_BHB',
+        14: 'STAR_CARBON',
+        15: 'STAR_BROWN_DWARF',
+        16: 'STAR_SUB_DWARF',
+        17: 'STAR_CATY_VAR',
+        18: 'STAR_RED_DWARF',
+        19: 'STAR_WHITE_DWARF',
+        20: 'SERENDIP_BLUE',
+        21: 'SERENDIP_FIRST',
+        22: 'SERENDIP_RED',
+        23: 'SERENDIP_DISTANT',
+        24: 'SERENDIP_MANUAL',
+        25: 'QSO_MAG_OUTLIER',
+        26: 'GALAXY_RED_II',
+        27: 'ROSAT_E',
+        28: 'STAR_PN',
+        29: 'QSO_REJECT',
+        31: 'SOUTHERN_SURVEY',
+    }
+
+    _spf_bits: dict[int, str] = {
+        0: 'DISK_EMITTER',
+        1: 'DISK_EMITTER_CANDIDATE',
+        2: 'DOUBLE_PEAKED_OIII',
+    }
+
     def __init__(self, path_to_catalogue: Path):
         _path: Path = Path(path_to_catalogue)
         assert _path.is_absolute()
@@ -204,20 +244,82 @@ class SDSSParser(dict):
         Get data for the specific field. This method is cached.
         """
         assert isinstance(key, str)
-        assert key in self.keys()
 
-        if not self._cache[key]:
-            with open(self.path, 'r') as f:
-                self._cache[key] = list(
-                    map(lambda line: self._parse_value(line, key), f))
+        if key not in self._field_specs.keys():
+            if key.startswith('Flag_'): 
+                # Check if values are cached
+                if not self._cache[key]:
+                    # Initialise cache values
+                    for flag_str in self._flag_bits.values():
+                        self._cache[SDSSParser._format_flag_name(flag_str)] = []
+
+                    for flags in map(self._parse_flag, self['Flag']):
+                        for item in flags.items():
+                            self._cache[item[0]].append(item[1])
+
+            elif key.startswith('SpF_'):
+                # Check if values are cached
+                if not self._cache[key]:
+                    # Initialise cache values
+                    for spf_str in self._spf_bits.values():
+                        self._cache[SDSSParser._format_spf_name(spf_str)] = []
+
+                    for spfs in map(self._parse_spf, self['SpF']):
+                        for item in spfs.items():
+                            self._cache[item[0]].append(item[1])
+
+            else:
+                raise KeyError(f"Field '{key}' not found in SDSSParser.")
+        
+        elif not self._cache[key]:
+            if not self._cache[key]:
+                with open(self.path, 'r') as f:
+                    self._cache[key] = list(
+                        map(lambda line: self._parse_value(line, key), f)
+                    )
 
         return self._cache[key]
     
-    def _parse_value(self, line, field_name) -> Union[str, int, float]:
+    def keys(self) -> list[str]:
+        """
+        Returns a list of all keys.
+        """
+        # Basic fields
+        keys: list[str] = list(self._field_specs.keys())
+        # Flag fields
+        keys.extend(map(SDSSParser._format_flag_name, self._flag_bits.values()))
+        # Special flag (SpF) fields
+        keys.extend(map(SDSSParser._format_spf_name, self._spf_bits.values()))
+
+        return keys
+
+    def values(self) -> list:
+        """
+        Returns a list of all values.
+        """
+        return [self[key] for key in self.keys()]
+
+    @staticmethod
+    def _parse_value(
+        line, 
+        field_name: str,
+        get_flag_dict: bool = False,
+        get_spf_dict: bool = False,
+    ) -> Union[str, int, float, dict[str, int]]:
         """Parse a single field from a line."""
 
-        start, end, dtype = self._field_specs[field_name]
+        if field_name not in SDSSParser._field_specs.keys():
+            raise ValueError(f"Field name '{field_name}' is invalid!")
+        
+        start, end, dtype = SDSSParser._field_specs[field_name]
         value_str = line[start:end].strip()
+
+        if (field_name == 'Flag') and get_flag_dict:
+            # Return dict of flag values
+            return SDSSParser._parse_flag(int(value_str))
+        if (field_name == 'SpF') and get_spf_dict:
+            # Return dict of special flag values
+            return SDSSParser._parse_flag(int(value_str))
         
         if dtype == str:     f = lambda x: x
         elif dtype == int:   f = int
@@ -225,6 +327,44 @@ class SDSSParser(dict):
 
         return f(value_str)
     
+    @staticmethod
+    def _parse_flag(flag_value: int) -> dict[str, int]:
+
+        flags: dict[str, int] = dict(
+            (SDSSParser._format_flag_name(flag_name), 0) \
+            for flag_name in SDSSParser._flag_bits.values()
+        )
+        for bit_position, name in SDSSParser._flag_bits.items():
+            if bool(flag_value & (1 << bit_position)):
+                flags[SDSSParser._format_flag_name(name)] = 1
+
+        return flags
+    
+    @staticmethod
+    def _parse_spf(spf_value: int) -> dict[str, int]:
+
+        spfs: dict[str, int] = dict(
+            (SDSSParser._format_spf_name(flag_name), 0) \
+            for flag_name in SDSSParser._spf_bits.values()
+        )
+        for bit_position, name in SDSSParser._spf_bits.items():
+            if bool(spf_value & (1 << bit_position)):
+                spfs[SDSSParser._format_spf_name(name)] = 1
+
+        return spfs
+    
+    @staticmethod
+    def _format_flag_name(flag_name: str) -> str:
+        _flag_name: str = flag_name.removeprefix('Flag_')
+        assert _flag_name in SDSSParser._flag_bits.values()
+        return f"Flag_{_flag_name}"
+    
+    @staticmethod
+    def _format_spf_name(spf_name: str) -> str:
+        _spf_name: str = spf_name.removeprefix('SpF_')
+        assert _spf_name in SDSSParser._spf_bits.values()
+        return f"SpF_{_spf_name}"
+
     def _clear_cache(self) -> None:
         """
         Clears the cache.
@@ -252,12 +392,15 @@ class SDSSParser(dict):
         """
         from pandas import DataFrame
 
-        if with_duplicates:
-            keys = self.keys()
-        else:
+        keys = self.keys()
+        if not with_duplicates:
             dupes = self._check_duplicates().keys()
-            keys = filter(lambda key: key not in dupes, self.keys())
+            keys = filter(
+                lambda key: key not in dupes, 
+                self.keys(),
+            )
 
-        func = lambda key: (key.lower(), self[key])
-
-        return DataFrame(dict(map(func, keys)))
+        return DataFrame(dict(map(
+            lambda key: (key.lower(), self[key]), 
+            keys,
+        )))

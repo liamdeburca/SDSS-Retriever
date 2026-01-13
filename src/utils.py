@@ -2,13 +2,14 @@
 Utility functions for handling SQL databases.
 """
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 from sqlite3 import Connection
 
 from pandas import DataFrame
 
 _this_file: Path = Path(__file__)
 PATH_TO_DB: Path = _this_file.parents[1] / 'data/db.db'
+PATH_TO_CACHE: Path = _this_file.parents[1] / 'cache'
 
 def connect_to_db() -> Connection:
     """
@@ -94,3 +95,35 @@ def write_to_db(
         index = False,
         if_exists = if_exists,
     )
+
+# def set_cache_location(
+#     subdir: Optional[str] = None,
+# ) -> Path:
+#     """
+#     Sets the cache location for AstroQuery queries. 
+#     """
+#     from pathlib import Path
+#     from astroquery.sdss import SDSS
+
+#     path: Path = PATH_TO_CACHE
+#     if subdir is not None: path /= subdir
+
+#     # Ensure cache directory exists
+#     path.mkdir(parents=True, exist_ok=True)
+#     # Update cache location
+#     SDSS._cache_location = path
+
+#     return path
+
+# def clear_cache(
+#     subdir: Optional[str] = None,
+# ) -> None:
+#     """
+#     Clears the AstroQuery cache.
+#     """
+#     from astroquery.sdss import SDSS
+
+#     # Ensure right cache location is set
+#     _ = set_cache_location(subdir=subdir)
+#     # Clear the cache
+#     SDSS.clear_cache()

@@ -22,6 +22,8 @@ AVAILABLE_PARSERS: dict = {
 from src.utils import write_to_db
 
 def main(namespace: Namespace) -> None:
+    from pandas import DataFrame
+
     print("Initialising database:")
     print(f"> Parsed: {namespace}")
 
@@ -36,12 +38,11 @@ def main(namespace: Namespace) -> None:
     
     parser = AVAILABLE_PARSERS[namespace.name](path_to_data)
 
+    # Create DataFrame
+    df: DataFrame = parser.to_dataframe(with_duplicates=False)
+
     # Write or append to dataframe
-    write_to_db(
-        namespace.name,
-        parser.to_dataframe(with_duplicates=False),
-        replace = namespace.replace,
-    )
+    write_to_db(namespace.name, df, replace=namespace.replace)
 
 if __name__ == '__main__':
     from argparse import ArgumentParser

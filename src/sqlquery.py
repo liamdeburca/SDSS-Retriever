@@ -76,6 +76,13 @@ class SQLQuery:
 
         return query_elems, query
     
+    def _query(self, sql: str) -> dict:
+        """
+        Uses a custom sql query to retrieve the data.
+        """
+        from pandas import read_sql_query
+        return read_sql_query(sql, self.connection).to_dict(orient='list')
+    
     @property
     def column_info(self):
         """
@@ -122,7 +129,6 @@ class SQLQuery:
         """
         return list(map(_pad, self._columns))
 
-    
     def connectToDatabase(self) -> 'SQLQuery':
         """
         Connects this instance to the designated (or default) database. 
@@ -143,11 +149,7 @@ class SQLQuery:
         """
         Builds the SQL query and retrieves the data.
         """
-        from pandas import read_sql_query
-        return read_sql_query(
-            self._build_query()[1], 
-            self.connection,
-        ).to_dict(orient='list')
+        return self._query(self._build_query()[1])
     
     def FROM(
         self,
