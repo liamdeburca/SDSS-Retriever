@@ -115,3 +115,16 @@ def write_to_db(
         index = False,
         if_exists = if_exists,
     )
+
+def correct_sql_statement(sql: str, keys: Iterable[str]) -> str:
+
+    sql = sql.lower()
+    for key in map(str.lower, keys):
+        if key.isalpha(): continue
+        
+        padded_key = f"`{key}`"
+
+        sql = sql.replace(padded_key, key) \
+                    .replace(key, padded_key)
+        
+    return sql

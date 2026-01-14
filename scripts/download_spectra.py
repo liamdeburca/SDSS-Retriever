@@ -9,43 +9,44 @@ import sys
 from pathlib import Path
 from argparse import Namespace
 from pandas import DataFrame
-from multiprocessing.pool import Pool
+from numpy import mean
 
 _this_file: Path = Path(__file__)
 if (pkg_path := _this_file.parents[1]) not in sys.path:
     sys.path.append(str(pkg_path))
 
 from src.sqlquery import SQLQuery
-from src.utils import write_to_db
-from src.sdss_retriever import SDSSRetriever
+from src.utils import write_to_db, correct_sql_statement
 from src.shen_2011.sdssparser import SDSSParser
+from src.retriever import AsyncSDSSRetriever
 
-def main(namespace: Namespace, pool: Pool) -> None:
+def main(namespace: Namespace) -> None:
     # Retrieve samples using SQL query
 
-    sql: str = SDSSParser.correctSQLStatement(namespace.s)
-    table_name: str = namespace.t
-
     print("Downloading spectra:", end='\n')
-    print(f"> SQL query:        {sql}")
-    print(f"> Output table:     {table_name}")
-    print(f"> No. of processes: {pool._processes}", end='\n')
+    print(f"> SQL query:        {namespace.s}")
+    print(f"> Output table:     {namespace.t}")
+    print(f"> Timeout:          {namespace.timeout} seconds")
 
+    sql: str = correct_sql_statement(namespace.s, SDSSParser.keys())
     with SQLQuery.START() as q:
         df: DataFrame = q._query(sql)
 
     print(f"> Retrieved DataFrame w/ shape: {df.shape}")
 
     # Write table with selected samples
-    write_to_db('samples', table_name, df, replace=True)
+    write_to_db('samples', namespace.t, df, replace=True)
     print(f"> Wrote DataFrame to SQL table.")
 
-    # Download spectra using multiprocessing
+    # Download spectra
+    print("> Downloading spectra...")
+    retriever = AsyncSDSSRetriever(
+        timeout = namespace.timeout,
+        data_release = namespace.dr,
+    )
+    successes = list(map(bool, retriever(df)))
 
-    download_itr = SDSSRetriever(pool)(df)
-    print(list(map(bool, download_itr)))
-
-    return 
+    print(f"Finished downloading spectra: {mean(successes)*100:.2f}% success.")
         
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -66,7 +67,19 @@ if __name__ == '__main__':
         required = True,
         help = "Name of the output SQL table to store selected samples.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        '--timeout',
+        type = float,
+        required = False,
+        default = 60.0,
+        help = "Maximum timeout (in seconds) for each spectrum retrieval.", 
+    )
+    parser.add_argument(
+        '--dr',
+        type = int,
+        required = False,
+        default = 17,
+        help = "SDSS Data Release number.",
+    )
 
-    with Pool() as pool:
-        main(args, pool)
+    main(parser.parse_args())

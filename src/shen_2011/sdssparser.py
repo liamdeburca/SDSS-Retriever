@@ -407,17 +407,3 @@ class SDSSParser(dict):
             lambda key: (key.lower(), self[key]), 
             keys,
         )))
-    
-    @staticmethod
-    def correctSQLStatement(sql: str) -> str:
-
-        sql = sql.lower()
-        for key in map(str.lower, SDSSParser.keys()):
-            if key.isalpha(): continue
-            
-            padded_key = f"`{key}`"
-
-            sql = sql.replace(padded_key, key) \
-                     .replace(key, padded_key)
-            
-        return sql
