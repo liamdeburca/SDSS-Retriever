@@ -92,6 +92,7 @@ def write_to_db(
     table_name: str,
     df: DataFrame,
     replace: bool = True,
+    chunksize: int = 1000,
 ) -> None:
     """
     Writes a Pandas dataframe to the selected table.
@@ -114,6 +115,7 @@ def write_to_db(
         _connect_to_any_db(db_name)[0],
         index = False,
         if_exists = if_exists,
+        chunksize = chunksize,
     )
 
 def correct_sql_statement(sql: str, keys: Iterable[str]) -> str:
@@ -145,8 +147,8 @@ def download_data_file(
     print(f"> GZIP: {str(path_to_gzip)}")
     print(f"> DATA: {str(path_to_data)}")
 
-    if path_to_gzip.exists(): remove(path_to_gzip)
     if path_to_data.exists(): remove(path_to_data)
+    if path_to_gzip.exists(): remove(path_to_gzip)
 
     with requests.get(url, stream=True) as r:
         print(f"> HTML: {r.status_code}")

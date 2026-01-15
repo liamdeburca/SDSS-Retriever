@@ -232,7 +232,7 @@ class Shen2011Parser(SDSSParser):
         """
         Get data for the specific field. This method is cached.
         """
-        assert isinstance(key, str)
+        assert key in self.keys()
 
         if key not in self._field_specs.keys():
             if key.startswith('Flag_'): 
@@ -286,72 +286,41 @@ class Shen2011Parser(SDSSParser):
         keys.extend(map(cls._format_spf_name, cls._spf_bits.values()))
 
         return keys
-
-    @classmethod
-    def _parse_value(
-        cls,
-        line: str, 
-        field_name: str,
-        get_flag_dict: bool = False,
-        get_spf_dict: bool = False,
-    ) -> Union[str, int, float, dict[str, int]]:
-        """
-        Parse a single field from a line.
-        """
-
-        if field_name not in cls._field_specs.keys():
-            raise ValueError(f"Field name '{field_name}' is invalid!")
-        
-        start, end, dtype = cls._field_specs[field_name]
-        value_str = line[start:end].strip()
-
-        if (field_name == 'Flag') and get_flag_dict:
-            # Return dict of flag values
-            return cls._parse_flag(int(value_str))
-        if (field_name == 'SpF') and get_spf_dict:
-            # Return dict of special flag values
-            return cls._parse_flag(int(value_str))
-        
-        if not value_str: return None
-        
-        if dtype == str:     return value_str
-        elif dtype == int:   return int(value_str)  
-        elif dtype == float: return float(value_str)
     
-    @staticmethod
-    def _parse_flag(flag_value: int) -> dict[str, int]:
+    @classmethod
+    def _parse_flag(cls, flag_value: int) -> dict[str, int]:
 
         flags: dict[str, int] = dict(
-            (Shen2011Parser._format_flag_name(flag_name), 0) \
+            (cls._format_flag_name(flag_name), 0) \
             for flag_name in Shen2011Parser._flag_bits.values()
         )
-        for bit_position, name in Shen2011Parser._flag_bits.items():
+        for bit_position, name in cls._flag_bits.items():
             if bool(flag_value & (1 << bit_position)):
-                flags[Shen2011Parser._format_flag_name(name)] = 1
+                flags[cls._format_flag_name(name)] = 1
 
         return flags
     
-    @staticmethod
-    def _parse_spf(spf_value: int) -> dict[str, int]:
+    @classmethod
+    def _parse_spf(cls, spf_value: int) -> dict[str, int]:
 
         spfs: dict[str, int] = dict(
-            (Shen2011Parser._format_spf_name(flag_name), 0) \
-            for flag_name in Shen2011Parser._spf_bits.values()
+            (cls._format_spf_name(flag_name), 0) \
+            for flag_name in cls._spf_bits.values()
         )
-        for bit_position, name in Shen2011Parser._spf_bits.items():
+        for bit_position, name in cls._spf_bits.items():
             if bool(spf_value & (1 << bit_position)):
-                spfs[Shen2011Parser._format_spf_name(name)] = 1
+                spfs[cls._format_spf_name(name)] = 1
 
         return spfs
     
-    @staticmethod
-    def _format_flag_name(flag_name: str) -> str:
+    @classmethod
+    def _format_flag_name(cls, flag_name: str) -> str:
         _flag_name: str = flag_name.removeprefix('Flag_')
-        assert _flag_name in Shen2011Parser._flag_bits.values()
+        assert _flag_name in cls._flag_bits.values()
         return f"Flag_{_flag_name}"
     
-    @staticmethod
-    def _format_spf_name(spf_name: str) -> str:
+    @classmethod
+    def _format_spf_name(cls, spf_name: str) -> str:
         _spf_name: str = spf_name.removeprefix('SpF_')
-        assert _spf_name in Shen2011Parser._spf_bits.values()
+        assert _spf_name in cls._spf_bits.values()
         return f"SpF_{_spf_name}"
