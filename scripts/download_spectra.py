@@ -17,8 +17,9 @@ if (pkg_path := _this_file.parents[1]) not in sys.path:
 
 from src.sqlquery import SQLQuery
 from src.utils import write_to_db, correct_sql_statement
-from src.shen_2011.sdssparser import SDSSParser
 from src.retriever import AsyncSDSSRetriever
+
+from src.parsers import PARSERS
 
 def main(namespace: Namespace) -> None:
     # Retrieve samples using SQL query
@@ -28,7 +29,12 @@ def main(namespace: Namespace) -> None:
     print(f"> Output table:     {namespace.t}")
     print(f"> Timeout:          {namespace.timeout} seconds")
 
-    sql: str = correct_sql_statement(namespace.s, SDSSParser.keys())
+    parser_cls = PARSERS[namespace.db]
+
+    sql: str = correct_sql_statement(
+        namespace.s, parser_cls.keys(),
+    ).format(namespace.db)
+
     with SQLQuery.START() as q:
         df: DataFrame = q._query(sql)
 
@@ -40,11 +46,11 @@ def main(namespace: Namespace) -> None:
 
     # Download spectra
     print("> Downloading spectra...")
-    retriever = AsyncSDSSRetriever(
+    res = AsyncSDSSRetriever(
         timeout = namespace.timeout,
         data_release = namespace.dr,
-    )
-    successes = list(map(bool, retriever(df)))
+    )(df)
+    successes = list(map(bool, res))
 
     print(f"Finished downloading spectra: {mean(successes)*100:.2f}% success.")
         
@@ -66,6 +72,13 @@ if __name__ == '__main__':
         type = str,
         required = True,
         help = "Name of the output SQL table to store selected samples.",
+    )
+    parser.add_argument(
+        '--db',
+        type = str,
+        required = False,
+        default = 'shen_2011',
+        choices = tuple(PARSERS.keys()),
     )
     parser.add_argument(
         '--timeout',

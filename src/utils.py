@@ -128,3 +128,35 @@ def correct_sql_statement(sql: str, keys: Iterable[str]) -> str:
                     .replace(key, padded_key)
         
     return sql
+
+def download_data_file(
+    url: str,
+    path_to_gzip: Path,
+    path_to_data: Path,
+) -> None:
+    import requests
+    import gzip
+
+    from os import remove
+    from shutil import copyfileobj
+
+    print("Downloading data file:")
+    print(f"> URL:  {url}")
+    print(f"> GZIP: {str(path_to_gzip)}")
+    print(f"> DATA: {str(path_to_data)}")
+
+    if path_to_gzip.exists(): remove(path_to_gzip)
+    if path_to_data.exists(): remove(path_to_data)
+
+    with requests.get(url, stream=True) as r:
+        print(f"> HTML: {r.status_code}")
+        r.raise_for_status()
+
+        with open(path_to_gzip, 'wb') as f_in:
+            f_in.write(r.content)
+
+        with gzip.open(path_to_gzip, 'rb') as f_in:
+            with open(path_to_data, 'wb') as f_out:
+                copyfileobj(f_in, f_out)
+
+    remove(path_to_gzip)
