@@ -3,10 +3,9 @@ Class for parsing ASCII file from Shen et al. (2011).
 """
 from typing import Union
 from pathlib import Path
-from collections import defaultdict
-from pandas import DataFrame
+from .parser import SDSSParser
 
-class SDSSParser(dict):
+class Shen2011Parser(SDSSParser):
     _field_specs: dict[str, tuple] = {
         'SDSS': (0, 18, str),
         'RAdeg': (19, 28, float),
@@ -228,16 +227,6 @@ class SDSSParser(dict):
         1: 'DISK_EMITTER_CANDIDATE',
         2: 'DOUBLE_PEAKED_OIII',
     }
-
-    def __init__(self, path_to_catalogue: Path):
-        _path: Path = Path(path_to_catalogue)
-        assert _path.is_absolute()
-        assert _path.exists()
-        assert _path.name.endswith('dat')
-
-        super().__init__((key, None) for key in self._field_specs.keys())
-        self.path: Path = _path
-        self._cache: dict = defaultdict(lambda: False)
     
     def __getitem__(self, key) -> list[Union[str, int, float]]:
         """
@@ -248,10 +237,10 @@ class SDSSParser(dict):
         if key not in self._field_specs.keys():
             if key.startswith('Flag_'): 
                 # Check if values are cached
-                if not self._cache[key]:
+                if self._cache[key] is None:
                     # Initialise cache values
                     for flag_str in self._flag_bits.values():
-                        self._cache[SDSSParser._format_flag_name(flag_str)] = []
+                        self._cache[self._format_flag_name(flag_str)] = []
 
                     for flags in map(self._parse_flag, self['Flag']):
                         for item in flags.items():
@@ -259,87 +248,86 @@ class SDSSParser(dict):
 
             elif key.startswith('SpF_'):
                 # Check if values are cached
-                if not self._cache[key]:
+                if self._cache[key] is None:
                     # Initialise cache values
                     for spf_str in self._spf_bits.values():
-                        self._cache[SDSSParser._format_spf_name(spf_str)] = []
+                        self._cache[self._format_spf_name(spf_str)] = []
 
                     for spfs in map(self._parse_spf, self['SpF']):
                         for item in spfs.items():
                             self._cache[item[0]].append(item[1])
 
             else:
-                raise KeyError(f"Field '{key}' not found in SDSSParser.")
+                raise KeyError(f"Field '{key}' not found in Shen2011Parser.")
         
-        elif not self._cache[key]:
-            if not self._cache[key]:
-                with open(self.path, 'r') as f:
-                    self._cache[key] = list(
-                        map(lambda line: self._parse_value(line, key), f)
-                    )
+        elif self._cache[key] is None:
+            with open(self.path, 'r') as f:
+                self._cache[key] = list(
+                    map(lambda line: self._parse_value(line, key), f)
+                )
 
         return self._cache[key]
     
-    @staticmethod
-    def keys() -> list[str]:
+    @classmethod
+    def path_to_data(cls) -> Path:
+        from scripts.shen_2011.download_data import PATH_TO_DATA
+        return PATH_TO_DATA
+    
+    @classmethod
+    def keys(cls) -> list[str]:
         """
         Returns a list of all keys.
         """
-        cls = SDSSParser
-
         # Basic fields
         keys: list[str] = list(cls._field_specs.keys())
         # Flag fields
-        keys.extend(map(SDSSParser._format_flag_name, cls._flag_bits.values()))
+        keys.extend(map(cls._format_flag_name, cls._flag_bits.values()))
         # Special flag (SpF) fields
-        keys.extend(map(SDSSParser._format_spf_name, cls._spf_bits.values()))
+        keys.extend(map(cls._format_spf_name, cls._spf_bits.values()))
 
         return keys
 
-    def values(self) -> list:
-        """
-        Returns a list of all values.
-        """
-        return [self[key] for key in self.keys()]
-
-    @staticmethod
+    @classmethod
     def _parse_value(
-        line, 
+        cls,
+        line: str, 
         field_name: str,
         get_flag_dict: bool = False,
         get_spf_dict: bool = False,
     ) -> Union[str, int, float, dict[str, int]]:
-        """Parse a single field from a line."""
+        """
+        Parse a single field from a line.
+        """
 
-        if field_name not in SDSSParser._field_specs.keys():
+        if field_name not in cls._field_specs.keys():
             raise ValueError(f"Field name '{field_name}' is invalid!")
         
-        start, end, dtype = SDSSParser._field_specs[field_name]
+        start, end, dtype = cls._field_specs[field_name]
         value_str = line[start:end].strip()
 
         if (field_name == 'Flag') and get_flag_dict:
             # Return dict of flag values
-            return SDSSParser._parse_flag(int(value_str))
+            return cls._parse_flag(int(value_str))
         if (field_name == 'SpF') and get_spf_dict:
             # Return dict of special flag values
-            return SDSSParser._parse_flag(int(value_str))
+            return cls._parse_flag(int(value_str))
         
-        if dtype == str:     f = lambda x: x
-        elif dtype == int:   f = int
-        elif dtype == float: f = float
-
-        return f(value_str)
+        if not value_str: return None
+        
+        if dtype == str:     return value_str
+        elif dtype == int:   return int(value_str)  
+        elif dtype == float: return float(value_str)
     
     @staticmethod
     def _parse_flag(flag_value: int) -> dict[str, int]:
 
         flags: dict[str, int] = dict(
-            (SDSSParser._format_flag_name(flag_name), 0) \
-            for flag_name in SDSSParser._flag_bits.values()
+            (Shen2011Parser._format_flag_name(flag_name), 0) \
+            for flag_name in Shen2011Parser._flag_bits.values()
         )
-        for bit_position, name in SDSSParser._flag_bits.items():
+        for bit_position, name in Shen2011Parser._flag_bits.items():
             if bool(flag_value & (1 << bit_position)):
-                flags[SDSSParser._format_flag_name(name)] = 1
+                flags[Shen2011Parser._format_flag_name(name)] = 1
 
         return flags
     
@@ -347,63 +335,23 @@ class SDSSParser(dict):
     def _parse_spf(spf_value: int) -> dict[str, int]:
 
         spfs: dict[str, int] = dict(
-            (SDSSParser._format_spf_name(flag_name), 0) \
-            for flag_name in SDSSParser._spf_bits.values()
+            (Shen2011Parser._format_spf_name(flag_name), 0) \
+            for flag_name in Shen2011Parser._spf_bits.values()
         )
-        for bit_position, name in SDSSParser._spf_bits.items():
+        for bit_position, name in Shen2011Parser._spf_bits.items():
             if bool(spf_value & (1 << bit_position)):
-                spfs[SDSSParser._format_spf_name(name)] = 1
+                spfs[Shen2011Parser._format_spf_name(name)] = 1
 
         return spfs
     
     @staticmethod
     def _format_flag_name(flag_name: str) -> str:
         _flag_name: str = flag_name.removeprefix('Flag_')
-        assert _flag_name in SDSSParser._flag_bits.values()
+        assert _flag_name in Shen2011Parser._flag_bits.values()
         return f"Flag_{_flag_name}"
     
     @staticmethod
     def _format_spf_name(spf_name: str) -> str:
         _spf_name: str = spf_name.removeprefix('SpF_')
-        assert _spf_name in SDSSParser._spf_bits.values()
+        assert _spf_name in Shen2011Parser._spf_bits.values()
         return f"SpF_{_spf_name}"
-
-    def _clear_cache(self) -> None:
-        """
-        Clears the cache.
-        """
-        self._cache.clear()
-        for key in self.keys(): self[key] = None
-
-    def _check_duplicates(self) -> dict[str, int]:
-        """
-        Checks for duplicate field names.
-        """
-        from collections import Counter
-        return dict(
-            item \
-            for item in Counter(map(str.lower, self.keys())).items() \
-            if item[1] > 1
-        )
-    
-    def to_dataframe(
-        self,
-        with_duplicates: bool = False,
-    ) -> DataFrame:
-        """
-        Creates an equivalent DataFrame.
-        """
-        from pandas import DataFrame
-
-        keys = self.keys()
-        if not with_duplicates:
-            dupes = self._check_duplicates().keys()
-            keys = filter(
-                lambda key: key not in dupes, 
-                self.keys(),
-            )
-
-        return DataFrame(dict(map(
-            lambda key: (key.lower(), self[key]), 
-            keys,
-        )))
