@@ -1,7 +1,13 @@
-from asyncio import Semaphore
-from aiohttp import ClientSession
-from typing import Optional, Generator
+from asyncio import Semaphore, TimeoutError, gather, run
+from aiohttp import ClientSession, TCPConnector, ClientTimeout
+from tqdm import tqdm
+from tqdm.asyncio import tqdm_asyncio
+from typing import Optional
 from numpy import ndarray
+from io import BytesIO
+from astropy.io import fits
+from itertools import batched
+from math import ceil
 
 from .abstract_retriever import AbstractRetriever
 
@@ -24,7 +30,6 @@ class AsyncSDSSRetriever(AbstractRetriever):
 
     @property
     def semaphore(self) -> Semaphore:
-        from asyncio import Semaphore
         return Semaphore(self.max_concurrent) 
     
     async def fetch_spectrum(
@@ -40,17 +45,15 @@ class AsyncSDSSRetriever(AbstractRetriever):
         tuple or None
             (wavelength, flux, error) if successful, None otherwise
         """
-        from asyncio import TimeoutError
-        from io import BytesIO
-        from astropy.io import fits
-
         plate, fiber, mjd = args
 
         cache_result = self._get_from_cache(plate, fiber, mjd)
         if cache_result is not None:
             return cache_result
         
-        url: str = self._get_url_to_spectrum(plate, fiber, mjd)
+        try:    url: str = self._get_url_to_spectrum(plate, fiber, mjd)
+        except Exception as e: url = None
+        
         if url is None: return None
 
         # Use semaphore to limit concurrent requests
@@ -95,10 +98,6 @@ class AsyncSDSSRetriever(AbstractRetriever):
         list
             List of (wavelength, flux, error) tuples or None for failures
         """
-        from asyncio import gather
-        from aiohttp import ClientSession, TCPConnector, ClientTimeout
-        from tqdm.asyncio import tqdm_asyncio
-
         # Create session with timeout
         timeout:   ClientTimeout = ClientTimeout(total=self.timeout)
         connector: TCPConnector  = TCPConnector(limit=self.max_concurrent)
@@ -120,10 +119,6 @@ class AsyncSDSSRetriever(AbstractRetriever):
         *args,
         leave_pbar: bool = True,
     ) -> list[tuple[ndarray, ndarray, ndarray]]:
-        from itertools import batched
-        from math import ceil
-        from tqdm import tqdm
-        from asyncio import run
 
         assert len(args) >= 1
 
@@ -138,8 +133,11 @@ class AsyncSDSSRetriever(AbstractRetriever):
                 desc = "BATCHES",
                 total = ceil(loop[-1] / self.batch_size),
             )
+
             out = []
-            for args in batch_loop: 
+            for args in batch_loop:
                 out.extend(self(*args, leave_pbar=False))
+
+            return out
 
         return run(self.get_spectrum(*args, leave_pbar=leave_pbar))

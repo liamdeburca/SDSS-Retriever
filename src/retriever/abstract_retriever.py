@@ -2,8 +2,9 @@ from abc import ABC
 from typing import Iterator, Union, Iterator, Optional, Generator
 from pathlib import Path
 from functools import lru_cache
+import h5py
 from astropy.io.fits import HDUList
-from numpy import ndarray
+from numpy import ndarray, array
 
 _path_to_cache: Path = Path(__file__).parents[2] / ".cache"
 
@@ -13,11 +14,11 @@ class AbstractRetriever(ABC):
     def __init__(
         self,
         timeout: float = 60.0,
-        data_release: int = 17,
+        data_release: Optional[int] = None,
         show_progress: bool = True,
     ):
         self.timeout: float = timeout
-        self.data_release: int = data_release
+        self.data_release: Optional[int] = data_release
         self.show_progress: bool = show_progress
 
     def _format_args_into_iterables(
@@ -97,10 +98,17 @@ class AbstractRetriever(ABC):
         from numpy import integer
         from astroquery.sdss import SDSS, conf
 
-        res = SDSS.query_specobj(
-            plate=plate, fiberID=fiber, mjd=mjd, 
-            data_release=self.data_release, timeout=self.timeout,
+        kwargs = dict(
+            plate = plate,
+            fiberID = fiber,
+            mjd = mjd,
+            data_release = self.data_release or astroquery.sdss.conf.default_release,
+            timeout = self.timeout,
         )
+
+        try:                   res = SDSS.query_specobj(**kwargs)
+        except Exception as e: res = None
+        
         if (res is None) or len(res) == 0: return None
         
         row = res[0]
@@ -174,15 +182,13 @@ class AbstractRetriever(ABC):
         fiber: int,
         mjd: int,
     ) -> Union[tuple[ndarray, ndarray, ndarray], None]:
-        import pickle
-
         hash_str: str = self._create_cache_hash(plate, fiber, mjd)
-        cache_file: Path = _path_to_cache / f"{hash_str}.pkl"
+        cache_file: Path = _path_to_cache / f"{hash_str}.h5"
 
         if not cache_file.exists(): return None
 
-        with open(cache_file, 'rb') as f:
-            return pickle.load(f)
+        with h5py.File(cache_file, 'r') as f:
+            return (array(f['x']), array(f['y']), array(f['dy']))
             
     def _add_to_cache(
         self,
@@ -191,18 +197,18 @@ class AbstractRetriever(ABC):
         mjd: int,
         data: tuple[ndarray, ndarray, ndarray],
     ) -> None:
-        import pickle
-
         hash_str: str = self._create_cache_hash(plate, fiber, mjd)
-        cache_file: Path = _path_to_cache / f"{hash_str}.pkl"
+        cache_file: Path = _path_to_cache / f"{hash_str}.h5"
 
         if not _path_to_cache.exists():
             _path_to_cache.mkdir(parents=True, exist_ok=True)
 
         if cache_file.exists(): return
 
-        with open(cache_file, 'wb') as f:
-            pickle.dump(data, f)
+        with h5py.File(cache_file, 'w') as f:
+            f.create_dataset('x',  data=data[0], compression='gzip', compression_opts=9)
+            f.create_dataset('y',  data=data[1], compression='gzip', compression_opts=9)
+            f.create_dataset('dy', data=data[2], compression='gzip', compression_opts=9)
 
     def _remove_from_cache(
         self,
@@ -213,7 +219,7 @@ class AbstractRetriever(ABC):
         from os import remove
 
         hash_str: str = self._create_cache_hash(plate, fiber, mjd)
-        cache_file: Path = _path_to_cache / f"{hash_str}.pkl"
+        cache_file: Path = _path_to_cache / f"{hash_str}.h5"
 
         assert cache_file.exists()
 
@@ -221,4 +227,4 @@ class AbstractRetriever(ABC):
 
     def _clear_cache(self) -> None:
         from os import remove
-        _ = list(map(remove, _path_to_cache.glob('*.pkl')))
+        _ = list(map(remove, _path_to_cache.glob('*.h5')))

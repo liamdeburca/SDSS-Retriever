@@ -22,14 +22,20 @@ from src.retriever import AsyncSDSSRetriever
 from src.parsers import PARSERS
 
 def main(namespace: Namespace) -> None:
-    # Retrieve samples using SQL query
+    # Retrieve samples using SQL query    
 
     print("Downloading spectra:", end='\n')
     print(f"> SQL query:        {namespace.s}")
     print(f"> Output table:     {namespace.t}")
     print(f"> Timeout:          {namespace.timeout} seconds")
+    print(f"> Batch size:       {namespace.bsize}")
 
     parser_cls = PARSERS[namespace.db]
+    retriever = AsyncSDSSRetriever(
+        timeout = namespace.timeout,
+        data_release = namespace.dr,
+        batch_size = namespace.bsize,
+    )
 
     sql: str = correct_sql_statement(
         namespace.s, parser_cls.keys(),
@@ -46,10 +52,7 @@ def main(namespace: Namespace) -> None:
 
     # Download spectra
     print("> Downloading spectra...")
-    res = AsyncSDSSRetriever(
-        timeout = namespace.timeout,
-        data_release = namespace.dr,
-    )(df)
+    res = retriever(df)
     successes = list(map(bool, res))
 
     print(f"Finished downloading spectra: {mean(successes)*100:.2f}% success.")
@@ -93,6 +96,13 @@ if __name__ == '__main__':
         required = False,
         default = 17,
         help = "SDSS Data Release number.",
+    )
+    parser.add_argument(
+        '--bsize',
+        type = int,
+        required = False,
+        default = 100,
+        help = "Batch size for asynchronous retrieval.",
     )
 
     main(parser.parse_args())
